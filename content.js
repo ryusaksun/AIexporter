@@ -122,9 +122,9 @@
     if (att.thumbnail_url) return att.thumbnail_url;
     if (att.content_url) return att.content_url;
 
-    // Try asset fields (Claude may use preview_asset/thumbnail_asset)
-    if (att.preview_asset) return att.preview_asset;
-    if (att.thumbnail_asset) return att.thumbnail_asset;
+    // Try asset fields (Claude uses preview_asset/thumbnail_asset as objects with .url)
+    if (att.preview_asset?.url) return att.preview_asset.url;
+    if (att.thumbnail_asset?.url) return att.thumbnail_asset.url;
 
     // Construct URL from file_uuid or uuid or id
     const fileId = att.file_uuid || att.uuid || att.id;
