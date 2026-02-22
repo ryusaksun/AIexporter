@@ -15,6 +15,7 @@
     <div class="tabs">
       <button class="tab active" data-tab="current">当前对话</button>
       <button class="tab" data-tab="batch">批量导出</button>
+      <button class="tab" data-tab="project">Project</button>
     </div>
 
     <!-- Current conversation tab -->
@@ -29,7 +30,7 @@
           <input type="checkbox" id="opt-thinking"> 包含思考过程
         </label>
         <label class="option">
-          <input type="checkbox" id="opt-timestamp" checked> 包含时间戳
+          <input type="checkbox" id="opt-timestamp"> 包含时间戳
         </label>
         <div class="option-group">
           <span class="option-label">图片处理：</span>
@@ -66,7 +67,7 @@
           <input type="checkbox" id="batch-opt-thinking"> 包含思考过程
         </label>
         <label class="option">
-          <input type="checkbox" id="batch-opt-timestamp" checked> 包含时间戳
+          <input type="checkbox" id="batch-opt-timestamp"> 包含时间戳
         </label>
         <div class="option-group">
           <span class="option-label">图片处理：</span>
@@ -81,6 +82,39 @@
 
       <button id="batch-export-btn" class="btn primary" disabled>
         批量导出 (<span id="selected-count">0</span> 个)
+      </button>
+    </div>
+
+    <!-- Project export tab -->
+    <div id="tab-project" class="tab-content">
+      <div id="project-info" class="info-box">
+        <span class="info-label">检测中...</span>
+      </div>
+
+      <div id="project-conversation-list" class="conversation-list">
+        <p class="placeholder">请先打开一个 Project 页面</p>
+      </div>
+
+      <div class="options">
+        <label class="option">
+          <input type="checkbox" id="project-opt-thinking"> 包含思考过程
+        </label>
+        <label class="option">
+          <input type="checkbox" id="project-opt-timestamp"> 包含时间戳
+        </label>
+        <div class="option-group">
+          <span class="option-label">图片处理：</span>
+          <label class="option">
+            <input type="radio" name="project-image-mode" value="github" checked> 上传到 GitHub 图床
+          </label>
+          <label class="option">
+            <input type="radio" name="project-image-mode" value="skip"> 跳过图片
+          </label>
+        </div>
+      </div>
+
+      <button id="project-export-btn" class="btn primary" disabled>
+        一键导出 Project 所有对话
       </button>
     </div>
 

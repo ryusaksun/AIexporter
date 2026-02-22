@@ -34,6 +34,12 @@
     return match ? match[1] : null;
   }
 
+  // Extract project ID from current URL
+  function getProjectIdFromURL() {
+    const match = window.location.pathname.match(/\/project\/([a-f0-9-]+)/);
+    return match ? match[1] : null;
+  }
+
   // Fetch a single conversation's full data
   async function fetchConversation(orgId, conversationId) {
     const url = `https://claude.ai/api/organizations/${orgId}/chat_conversations/${conversationId}?tree=True&rendering_mode=messages&render_all_tools=true`;
@@ -92,6 +98,70 @@
     }
 
     return conversations;
+  }
+
+  // Fetch conversations belonging to a specific project
+  async function fetchProjectConversations(orgId, projectId) {
+    // Try multiple possible API endpoints
+    const endpoints = [
+      `https://claude.ai/api/organizations/${orgId}/projects/${projectId}/docs`,
+      `https://claude.ai/api/organizations/${orgId}/projects/${projectId}`,
+    ];
+
+    for (const url of endpoints) {
+      try {
+        const resp = await fetch(url, {
+          credentials: 'include',
+          headers: { 'Accept': 'application/json' },
+        });
+
+        if (!resp.ok) continue;
+
+        const data = await resp.json();
+
+        // The response might contain conversations in various fields
+        // Try to extract them
+        if (Array.isArray(data)) {
+          return data;
+        }
+
+        // Project detail might have a chat_conversations or docs field
+        if (data.chat_conversations) return data.chat_conversations;
+        if (data.conversations) return data.conversations;
+        if (data.docs) return data.docs;
+
+        // If the project object itself has useful data, return it wrapped
+        if (data.uuid && data.name) {
+          // This is the project object; try to get its conversations separately
+          continue;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    // Fallback: fetch all conversations and filter by project_uuid
+    const allConversations = await fetchConversationList(orgId);
+    return allConversations.filter(
+      (c) => c.project_uuid === projectId || c.project?.uuid === projectId
+    );
+  }
+
+  // Fetch project metadata (name, description)
+  async function fetchProjectInfo(orgId, projectId) {
+    try {
+      const resp = await fetch(
+        `https://claude.ai/api/organizations/${orgId}/projects/${projectId}`,
+        {
+          credentials: 'include',
+          headers: { 'Accept': 'application/json' },
+        }
+      );
+      if (!resp.ok) return null;
+      return resp.json();
+    } catch {
+      return null;
+    }
   }
 
   // Walk from leaf to root to get current branch messages in order
@@ -343,6 +413,13 @@
       return true;
     }
 
+    if (request.action === 'getProjectConversations') {
+      handleGetProjectConversations()
+        .then((data) => sendResponse({ success: true, data }))
+        .catch((err) => sendResponse({ success: false, error: err.message }));
+      return true;
+    }
+
     // Debug: dump raw API response for a conversation
     if (request.action === 'debugConversation') {
       handleDebugConversation()
@@ -505,5 +582,33 @@
       created_at: conv.created_at,
       updated_at: conv.updated_at,
     }));
+  }
+
+  // Get conversations for a specific project
+  async function handleGetProjectConversations() {
+    const orgId = await getOrganizationId();
+    const projectId = getProjectIdFromURL();
+
+    if (!projectId) {
+      throw new Error('No project found in current URL');
+    }
+
+    // Get project info for the name
+    const projectInfo = await fetchProjectInfo(orgId, projectId);
+    const conversations = await fetchProjectConversations(orgId, projectId);
+
+    return {
+      project: {
+        uuid: projectId,
+        name: projectInfo?.name || 'Unknown Project',
+        description: projectInfo?.description || '',
+      },
+      conversations: conversations.map((conv) => ({
+        uuid: conv.uuid,
+        name: conv.name || 'Untitled',
+        created_at: conv.created_at,
+        updated_at: conv.updated_at,
+      })),
+    };
   }
 })();

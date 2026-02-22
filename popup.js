@@ -12,15 +12,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   const deselectAllBtn = document.getElementById('deselect-all-btn');
   const searchInput = document.getElementById('search-input');
   const conversationList = document.getElementById('conversation-list');
-  const selectedCountEl = document.getElementById('selected-count');
   const progressSection = document.getElementById('progress-section');
   const progressBar = document.getElementById('progress-bar');
   const progressText = document.getElementById('progress-text');
   const statusMessage = document.getElementById('status-message');
   const openOptions = document.getElementById('open-options');
+  // Project elements
+  const projectInfo = document.getElementById('project-info');
+  const projectConvList = document.getElementById('project-conversation-list');
+  const projectExportBtn = document.getElementById('project-export-btn');
 
   let currentTabId = null;
   let conversations = [];
+  let projectConversationIds = []; // all conversation IDs in current project
   const selectedIds = new Set(); // persist selection across search/re-render
   let exporting = false; // guard against late progress messages
 
@@ -34,6 +38,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
+  // Helper: switch to a specific tab programmatically
+  function switchToTab(tabName) {
+    tabs.forEach((t) => t.classList.remove('active'));
+    tabContents.forEach((tc) => tc.classList.remove('active'));
+    const targetTab = document.querySelector(`.tab[data-tab="${tabName}"]`);
+    if (targetTab) targetTab.classList.add('active');
+    const targetContent = document.getElementById(`tab-${tabName}`);
+    if (targetContent) targetContent.classList.add('active');
+  }
+
   // Check if on claude.ai
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   currentTabId = tab?.id;
@@ -46,6 +60,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   const isOnChat = tab.url.includes('claude.ai/chat/');
+  const isOnProject = /claude\.ai\/project\/[a-f0-9-]+/.test(tab.url);
 
   if (isOnChat) {
     currentInfo.innerHTML = '<span class="info-label">当前对话已就绪</span>';
@@ -53,6 +68,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   } else {
     currentInfo.innerHTML = '<span class="info-label">请打开一个对话页面以导出当前对话</span>';
     exportBtn.disabled = true;
+  }
+
+  // If on a project page, auto-switch to Project tab and load conversations
+  if (isOnProject) {
+    switchToTab('project');
+    loadProjectConversations();
+  } else {
+    projectInfo.innerHTML = '<span class="info-label">请打开一个 Project 页面以使用此功能</span>';
   }
 
   // Listen for progress updates (only while exporting)
@@ -170,7 +193,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     showProgressSection();
 
     const options = getBatchExportOptions();
-    // Don't show saveAs dialog for each file in batch mode
     options.saveAs = false;
 
     try {
@@ -200,30 +222,121 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  // --- Project export ---
+
+  async function loadProjectConversations() {
+    projectInfo.innerHTML = '<span class="info-label">正在加载 Project 对话...</span>';
+    projectConvList.innerHTML = '<p class="placeholder">加载中...</p>';
+    projectExportBtn.disabled = true;
+
+    try {
+      const result = await chrome.tabs.sendMessage(currentTabId, {
+        action: 'getProjectConversations',
+      });
+
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      const { project, conversations: convs } = result.data;
+      projectConversationIds = convs.map((c) => c.uuid);
+
+      projectInfo.innerHTML = `<span class="info-label"><strong>${escapeHtml(project.name)}</strong> — ${convs.length} 个对话</span>`;
+
+      if (convs.length === 0) {
+        projectConvList.innerHTML = '<p class="placeholder">该 Project 下没有对话</p>';
+        return;
+      }
+
+      projectConvList.innerHTML = convs
+        .map((conv) => {
+          const date = conv.updated_at
+            ? formatDate(conv.updated_at)
+            : conv.created_at
+              ? formatDate(conv.created_at)
+              : '';
+          const name = escapeHtml(conv.name || 'Untitled');
+          return `
+            <div class="conv-item">
+              <div class="conv-item-info">
+                <div class="conv-item-name" title="${name}">${name}</div>
+                <div class="conv-item-date">${date}</div>
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+
+      projectExportBtn.disabled = false;
+      projectExportBtn.textContent = `一键导出 Project 所有对话 (${convs.length} 个)`;
+    } catch (err) {
+      projectInfo.innerHTML = `<span class="info-label" style="color:#991b1b">加载失败: ${err.message}</span>`;
+      projectConvList.innerHTML = '';
+    }
+  }
+
+  projectExportBtn.addEventListener('click', async () => {
+    if (projectConversationIds.length === 0) return;
+
+    projectExportBtn.disabled = true;
+    projectExportBtn.textContent = '导出中...';
+    exporting = true;
+    hideStatus();
+    showProgressSection();
+
+    const options = getProjectExportOptions();
+    options.saveAs = false;
+
+    try {
+      const result = await chrome.runtime.sendMessage({
+        action: 'startBatchExport',
+        tabId: currentTabId,
+        conversationIds: projectConversationIds,
+        options,
+      });
+
+      if (result.success) {
+        showStatus(
+          'success',
+          `Project 导出完成: ${result.succeeded}/${result.total} 成功` +
+            (result.failed > 0 ? `, ${result.failed} 失败` : '')
+        );
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (err) {
+      showStatus('error', `Project 导出失败: ${err.message}`);
+    } finally {
+      exporting = false;
+      projectExportBtn.disabled = false;
+      projectExportBtn.textContent = `一键导出 Project 所有对话 (${projectConversationIds.length} 个)`;
+      hideProgressSection();
+    }
+  });
+
   // Open options page
   openOptions.addEventListener('click', (e) => {
     e.preventDefault();
     chrome.runtime.openOptionsPage();
   });
 
-  // Debug button - dump API data structure to console
+  // Debug button
   const debugBtn = document.getElementById('debug-btn');
   if (debugBtn) {
     debugBtn.addEventListener('click', async (e) => {
       e.preventDefault();
-      if (!currentTabId || !isOnChat) {
-        showStatus('error', '请先打开一个 Claude 对话页面');
+      if (!currentTabId) {
+        showStatus('error', '请先打开 claude.ai 页面');
         return;
       }
 
       debugBtn.textContent = '获取中...';
       try {
-        const result = await chrome.tabs.sendMessage(currentTabId, {
-          action: 'debugConversation',
-        });
+        // Use debugConversation for chat pages, or getProjectConversations for project pages
+        const action = isOnChat ? 'debugConversation' : 'getProjectConversations';
+        const result = await chrome.tabs.sendMessage(currentTabId, { action });
 
         if (result.success) {
-          // Download debug info as JSON
           const json = JSON.stringify(result.data, null, 2);
           const dataUrl = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
           await chrome.downloads.download({
@@ -231,7 +344,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             filename: 'aiexporter-debug.json',
             saveAs: false,
           });
-          showStatus('success', '调试数据已下载为 aiexporter-debug.json，请将此文件分享给开发者');
+          showStatus('success', '调试数据已下载为 aiexporter-debug.json');
         } else {
           throw new Error(result.error);
         }
@@ -258,6 +371,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       includeThinking: document.getElementById('batch-opt-thinking').checked,
       includeTimestamp: document.getElementById('batch-opt-timestamp').checked,
       imageMode: document.querySelector('input[name="batch-image-mode"]:checked').value,
+    };
+  }
+
+  function getProjectExportOptions() {
+    return {
+      includeThinking: document.getElementById('project-opt-thinking').checked,
+      includeTimestamp: document.getElementById('project-opt-timestamp').checked,
+      imageMode: document.querySelector('input[name="project-image-mode"]:checked').value,
     };
   }
 
@@ -289,7 +410,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       })
       .join('');
 
-    // Click on item toggles checkbox
     conversationList.querySelectorAll('.conv-item').forEach((item) => {
       item.addEventListener('click', (e) => {
         if (e.target.tagName === 'INPUT') return;
