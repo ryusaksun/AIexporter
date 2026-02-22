@@ -379,7 +379,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   function getExportOptions() {
     return {
       includeThinking: document.getElementById('opt-thinking').checked,
-      includeArtifacts: document.getElementById('opt-artifacts').checked,
       includeTimestamp: document.getElementById('opt-timestamp').checked,
       imageMode: document.querySelector('input[name="image-mode"]:checked').value,
     };
@@ -388,7 +387,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   function getBatchExportOptions() {
     return {
       includeThinking: document.getElementById('batch-opt-thinking').checked,
-      includeArtifacts: document.getElementById('batch-opt-artifacts').checked,
       includeTimestamp: document.getElementById('batch-opt-timestamp').checked,
       imageMode: document.querySelector('input[name="batch-image-mode"]:checked').value,
     };
@@ -397,7 +395,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   function getProjectExportOptions() {
     return {
       includeThinking: document.getElementById('project-opt-thinking').checked,
-      includeArtifacts: document.getElementById('project-opt-artifacts').checked,
       includeTimestamp: document.getElementById('project-opt-timestamp').checked,
       imageMode: document.querySelector('input[name="project-image-mode"]:checked').value,
     };

@@ -129,7 +129,6 @@ async function processAndDownload(data, options) {
   // Generate Markdown
   const markdown = MarkdownConverter.convert(conversation, messages, {
     includeThinking: options.includeThinking ?? false,
-    includeArtifacts: options.includeArtifacts ?? true,
     includeTimestamp: options.includeTimestamp ?? true,
     imageUrlMap,
   });
