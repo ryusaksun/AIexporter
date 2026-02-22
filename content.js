@@ -115,15 +115,21 @@
   // Get the best available URL from an attachment object
   // Claude API may use different field names across versions
   function getAttachmentUrl(att, orgId) {
-    // Try common URL field names
+    // Try common URL field names (prefer higher quality)
     if (att.file_url) return att.file_url;
     if (att.url) return att.url;
     if (att.preview_url) return att.preview_url;
+    if (att.thumbnail_url) return att.thumbnail_url;
     if (att.content_url) return att.content_url;
 
-    // Construct URL from attachment ID if available
-    if (att.id && orgId) {
-      return `https://claude.ai/api/organizations/${orgId}/files/${att.id}/content`;
+    // Try asset fields (Claude may use preview_asset/thumbnail_asset)
+    if (att.preview_asset) return att.preview_asset;
+    if (att.thumbnail_asset) return att.thumbnail_asset;
+
+    // Construct URL from file_uuid or uuid or id
+    const fileId = att.file_uuid || att.uuid || att.id;
+    if (fileId && orgId) {
+      return `https://claude.ai/api/organizations/${orgId}/files/${fileId}/content`;
     }
 
     return null;
@@ -138,6 +144,10 @@
   function isImageAttachment(att) {
     const mime = getAttachmentMimeType(att);
     if (mime && mime.startsWith('image/')) return true;
+
+    // Check file_kind field (Claude API uses this)
+    const kind = att.file_kind || '';
+    if (kind === 'image' || kind.startsWith('image')) return true;
 
     // Fallback: check file name extension
     const name = att.file_name || att.filename || att.name || '';
@@ -442,12 +452,35 @@
       }
 
       if (msg.files && Array.isArray(msg.files)) {
-        info.files = msg.files.map((f) => ({
-          keys: Object.keys(f),
-          file_name: f.file_name || f.filename || f.name,
-          file_type: f.file_type || f.media_type || f.content_type,
-          id: f.id,
-        }));
+        info.files = msg.files.map((f) => {
+          // Dump ALL field values (except large binary data)
+          const dump = {};
+          for (const key of Object.keys(f)) {
+            const val = f[key];
+            if (typeof val === 'string' && val.length > 500) {
+              dump[key] = val.substring(0, 200) + '...[truncated]';
+            } else {
+              dump[key] = val;
+            }
+          }
+          return dump;
+        });
+      }
+
+      // Also check files_v2
+      if (msg.files_v2 && Array.isArray(msg.files_v2) && msg.files_v2.length > 0) {
+        info.files_v2 = msg.files_v2.map((f) => {
+          const dump = {};
+          for (const key of Object.keys(f)) {
+            const val = f[key];
+            if (typeof val === 'string' && val.length > 500) {
+              dump[key] = val.substring(0, 200) + '...[truncated]';
+            } else {
+              dump[key] = val;
+            }
+          }
+          return dump;
+        });
       }
 
       return info;
