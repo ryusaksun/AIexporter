@@ -611,37 +611,6 @@
     const projectInfo = await fetchProjectInfo(orgId, projectId);
     const conversations = await fetchProjectConversations(orgId, projectId);
 
-    // Debug: if empty, scan all possible endpoints and log results
-    if (conversations.length === 0) {
-      const debugPaths = [
-        `/api/organizations/${orgId}/projects/${projectId}`,
-        `/api/organizations/${orgId}/projects/${projectId}/docs`,
-        `/api/organizations/${orgId}/projects/${projectId}/chat_conversations`,
-        `/api/organizations/${orgId}/projects/${projectId}/conversations`,
-        `/api/organizations/${orgId}/chat_conversations?project_uuid=${projectId}`,
-      ];
-      for (const path of debugPaths) {
-        try {
-          const r = await fetch(`https://claude.ai${path}`, {
-            credentials: 'include',
-            headers: { 'Accept': 'application/json' },
-          });
-          if (!r.ok) {
-            console.log(`[AIexporter] ${path} -> ${r.status}`);
-            continue;
-          }
-          const d = await r.json();
-          if (Array.isArray(d)) {
-            console.log(`[AIexporter] ${path} -> array[${d.length}]`, d.length > 0 ? 'first keys:' : '', d.length > 0 ? Object.keys(d[0]) : []);
-          } else {
-            console.log(`[AIexporter] ${path} -> object keys:`, Object.keys(d));
-          }
-        } catch (e) {
-          console.log(`[AIexporter] ${path} -> error:`, e.message);
-        }
-      }
-    }
-
     return {
       project: {
         uuid: projectId,
