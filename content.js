@@ -102,7 +102,18 @@
 
   // Fetch conversations belonging to a specific project
   async function fetchProjectConversations(orgId, projectId) {
-    // Primary: /docs endpoint returns project conversations
+    // Strategy: fetch all conversations and filter by project_uuid
+    // This is the most reliable method across all project types
+    const allConversations = await fetchConversationList(orgId);
+    const filtered = allConversations.filter(
+      (c) => c.project_uuid === projectId || c.project?.uuid === projectId
+    );
+
+    if (filtered.length > 0) {
+      return filtered;
+    }
+
+    // Fallback: try /docs endpoint (some projects list conversations there)
     try {
       const url = `https://claude.ai/api/organizations/${orgId}/projects/${projectId}/docs`;
       const resp = await fetch(url, {
@@ -112,20 +123,15 @@
 
       if (resp.ok) {
         const data = await resp.json();
-        let docs = [];
+        let docs = Array.isArray(data) ? data : (data.chat_conversations || data.conversations || []);
 
-        if (Array.isArray(data)) {
-          docs = data;
-        } else if (data.chat_conversations) {
-          docs = data.chat_conversations;
-        } else if (data.conversations) {
-          docs = data.conversations;
-        }
+        // Filter to only conversation-like items (have chat_conversation_uuid or similar)
+        const convDocs = docs.filter(
+          (d) => d.uuid || d.chat_conversation_uuid || d.conversation_uuid
+        );
 
-        if (docs.length > 0) {
-          // /docs items may use different field names than regular conversations
-          // Normalize: ensure each item has uuid and name
-          return docs.map((doc) => ({
+        if (convDocs.length > 0) {
+          return convDocs.map((doc) => ({
             ...doc,
             uuid: doc.uuid || doc.chat_conversation_uuid || doc.conversation_uuid || doc.id,
             name: doc.name || doc.title || doc.file_name || 'Untitled',
@@ -135,14 +141,10 @@
         }
       }
     } catch {
-      // Fall through to fallback
+      // ignore
     }
 
-    // Fallback: fetch all conversations and filter by project_uuid
-    const allConversations = await fetchConversationList(orgId);
-    return allConversations.filter(
-      (c) => c.project_uuid === projectId || c.project?.uuid === projectId
-    );
+    return [];
   }
 
   // Fetch project metadata (name, description)
