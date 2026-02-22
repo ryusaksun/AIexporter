@@ -102,73 +102,25 @@
 
   // Fetch conversations belonging to a specific project
   async function fetchProjectConversations(orgId, projectId) {
-    // Try multiple possible API endpoints
-    const endpoints = [
-      `https://claude.ai/api/organizations/${orgId}/projects/${projectId}/chat_conversations`,
-      `https://claude.ai/api/organizations/${orgId}/projects/${projectId}/conversations`,
-      `https://claude.ai/api/organizations/${orgId}/projects/${projectId}/docs`,
-      `https://claude.ai/api/organizations/${orgId}/chat_conversations?project_uuid=${projectId}`,
-    ];
+    // Primary: /docs endpoint returns project conversations directly
+    const url = `https://claude.ai/api/organizations/${orgId}/projects/${projectId}/docs`;
+    const resp = await fetch(url, {
+      credentials: 'include',
+      headers: { 'Accept': 'application/json' },
+    });
 
-    for (const url of endpoints) {
-      try {
-        const resp = await fetch(url, {
-          credentials: 'include',
-          headers: { 'Accept': 'application/json' },
-        });
-
-        if (!resp.ok) {
-          console.log(`[AIexporter] ${url} -> ${resp.status}`);
-          continue;
-        }
-
-        const data = await resp.json();
-        console.log(`[AIexporter] ${url} -> keys:`, Array.isArray(data) ? `array[${data.length}]` : Object.keys(data));
-
-        // Array of conversations
-        if (Array.isArray(data) && data.length > 0 && data[0].uuid) {
-          return data;
-        }
-
-        // Object with conversation list
-        if (data.chat_conversations) return data.chat_conversations;
-        if (data.conversations) return data.conversations;
-
-        // Paginated response
-        if (data.data && Array.isArray(data.data)) return data.data;
-        if (data.results && Array.isArray(data.results)) return data.results;
-      } catch (err) {
-        console.log(`[AIexporter] ${url} -> error:`, err.message);
-        continue;
-      }
+    if (resp.ok) {
+      const data = await resp.json();
+      if (Array.isArray(data)) return data;
+      if (data.chat_conversations) return data.chat_conversations;
+      if (data.conversations) return data.conversations;
     }
 
     // Fallback: fetch all conversations and filter by project_uuid
-    console.log('[AIexporter] Trying fallback: fetch all conversations and filter by project_uuid');
     const allConversations = await fetchConversationList(orgId);
-
-    // Try multiple possible field names for project association
-    const filtered = allConversations.filter((c) => {
-      if (c.project_uuid === projectId) return true;
-      if (c.project?.uuid === projectId) return true;
-      if (c.project_id === projectId) return true;
-      return false;
-    });
-
-    console.log(`[AIexporter] Fallback: ${allConversations.length} total, ${filtered.length} matched project`);
-
-    // If filtering found nothing, dump first conversation's keys for debugging
-    if (filtered.length === 0 && allConversations.length > 0) {
-      const sample = allConversations[0];
-      console.log('[AIexporter] Sample conversation keys:', Object.keys(sample));
-      console.log('[AIexporter] Sample project-related fields:', {
-        project_uuid: sample.project_uuid,
-        project: sample.project,
-        project_id: sample.project_id,
-      });
-    }
-
-    return filtered;
+    return allConversations.filter(
+      (c) => c.project_uuid === projectId || c.project?.uuid === projectId
+    );
   }
 
   // Fetch project metadata (name, description)
