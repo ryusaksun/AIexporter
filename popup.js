@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentTabId = null;
   let conversations = [];
   let projectConversationIds = []; // all conversation IDs in current project
+  let projectName = ''; // current project name for folder naming
   const selectedIds = new Set(); // persist selection across search/re-render
   let exporting = false; // guard against late progress messages
 
@@ -195,6 +196,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const options = getBatchExportOptions();
     options.saveAs = false;
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    options.downloadFolder = `AIexport/batch-${dateStr}`;
 
     try {
       const result = await chrome.runtime.sendMessage({
@@ -244,6 +248,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       const { project, conversations: convs } = result.data;
       projectConversationIds = convs.map((c) => c.uuid);
+      projectName = project.name || 'Project';
 
       projectInfo.innerHTML = `<span class="info-label"><strong>${escapeHtml(project.name)}</strong> — ${convs.length} 个对话</span>`;
 
@@ -290,6 +295,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const options = getProjectExportOptions();
     options.saveAs = false;
+    options.downloadFolder = `AIexport/${sanitizeFolderName(projectName)}`;
 
     try {
       const result = await chrome.runtime.sendMessage({
@@ -508,5 +514,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+  }
+
+  function sanitizeFolderName(name) {
+    return name.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, '_').substring(0, 60);
   }
 });

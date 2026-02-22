@@ -139,7 +139,8 @@ async function processAndDownload(data, options) {
   });
 
   // Trigger download
-  const fileName = sanitizeFileName(conversation.name || 'claude-conversation') + '.md';
+  const baseName = sanitizeFileName(conversation.name || 'claude-conversation') + '.md';
+  const fileName = options.downloadFolder ? `${options.downloadFolder}/${baseName}` : baseName;
   const dataUrl = 'data:text/markdown;charset=utf-8,' + encodeURIComponent(markdown);
 
   await chrome.downloads.download({
