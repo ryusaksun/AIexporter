@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let currentTabId = null;
   let conversations = [];
+  const selectedIds = new Set(); // persist selection across search/re-render
 
   // Tab switching
   tabs.forEach((tab) => {
@@ -137,10 +138,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderConversationList(filtered);
   });
 
-  // Select/deselect all
+  // Select/deselect all (operates on currently visible items)
   selectAllBtn.addEventListener('click', () => {
     conversationList.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
       cb.checked = true;
+      selectedIds.add(cb.value);
     });
     updateSelectedCount();
   });
@@ -148,6 +150,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   deselectAllBtn.addEventListener('click', () => {
     conversationList.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
       cb.checked = false;
+      selectedIds.delete(cb.value);
     });
     updateSelectedCount();
   });
@@ -256,7 +259,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function renderConversationList(convs) {
     if (convs.length === 0) {
       conversationList.innerHTML = '<p class="placeholder">没有找到对话</p>';
-      batchExportBtn.disabled = true;
+      updateSelectedCount();
       return;
     }
 
@@ -268,9 +271,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             ? formatDate(conv.created_at)
             : '';
         const name = escapeHtml(conv.name || 'Untitled');
+        const checked = selectedIds.has(conv.uuid) ? 'checked' : '';
         return `
           <div class="conv-item" data-id="${conv.uuid}">
-            <input type="checkbox" value="${conv.uuid}">
+            <input type="checkbox" value="${conv.uuid}" ${checked}>
             <div class="conv-item-info">
               <div class="conv-item-name" title="${name}">${name}</div>
               <div class="conv-item-date">${date}</div>
@@ -286,32 +290,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.target.tagName === 'INPUT') return;
         const cb = item.querySelector('input[type="checkbox"]');
         cb.checked = !cb.checked;
-        updateSelectedCount();
+        toggleSelection(cb.value, cb.checked);
       });
     });
 
     conversationList
       .querySelectorAll('input[type="checkbox"]')
-      .forEach((cb) => cb.addEventListener('change', updateSelectedCount));
+      .forEach((cb) => cb.addEventListener('change', () => toggleSelection(cb.value, cb.checked)));
+  }
+
+  function toggleSelection(id, checked) {
+    if (checked) {
+      selectedIds.add(id);
+    } else {
+      selectedIds.delete(id);
+    }
+    updateSelectedCount();
   }
 
   function getSelectedConversationIds() {
-    const ids = [];
-    conversationList.querySelectorAll('input[type="checkbox"]:checked').forEach((cb) => {
-      ids.push(cb.value);
-    });
-    return ids;
+    return Array.from(selectedIds);
   }
 
   function updateSelectedCount() {
-    const count = getSelectedConversationIds().length;
-    selectedCountEl.textContent = count;
+    const count = selectedIds.size;
     batchExportBtn.disabled = count === 0;
-    updateBatchButtonText();
-  }
-
-  function updateBatchButtonText() {
-    const count = getSelectedConversationIds().length;
     batchExportBtn.innerHTML = `批量导出 (<span id="selected-count">${count}</span> 个)`;
   }
 
