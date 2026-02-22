@@ -142,6 +142,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       conversations = result.data;
+      selectedIds.clear();
       renderConversationList(conversations);
     } catch (err) {
       conversationList.innerHTML = `<p class="placeholder" style="color:#991b1b">加载失败: ${err.message}</p>`;

@@ -21,7 +21,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case 'getConversationList':
       // Forward to content script
       chrome.tabs.sendMessage(request.tabId, { action: 'getConversationList' }, (resp) => {
-        sendResponse(resp);
+        if (chrome.runtime.lastError) {
+          sendResponse({ success: false, error: chrome.runtime.lastError.message });
+        } else {
+          sendResponse(resp || { success: false, error: 'No response from content script' });
+        }
       });
       return true;
 
@@ -130,6 +134,7 @@ async function processAndDownload(data, options) {
   const markdown = MarkdownConverter.convert(conversation, messages, {
     includeThinking: options.includeThinking ?? false,
     includeTimestamp: options.includeTimestamp ?? true,
+    imageMode: options.imageMode || 'github',
     imageUrlMap,
   });
 
