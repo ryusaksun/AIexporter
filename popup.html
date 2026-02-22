@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>AIexporter</h1>
+      <p class="subtitle">Export Claude conversations to Markdown</p>
+    </header>
+
+    <!-- Tab switcher -->
+    <div class="tabs">
+      <button class="tab active" data-tab="current">当前对话</button>
+      <button class="tab" data-tab="batch">批量导出</button>
+    </div>
+
+    <!-- Current conversation tab -->
+    <div id="tab-current" class="tab-content active">
+      <div id="current-info" class="info-box">
+        <span class="info-label">检测中...</span>
+      </div>
+
+      <!-- Export options -->
+      <div class="options">
+        <label class="option">
+          <input type="checkbox" id="opt-thinking"> 包含思考过程
+        </label>
+        <label class="option">
+          <input type="checkbox" id="opt-timestamp" checked> 包含时间戳
+        </label>
+        <div class="option-group">
+          <span class="option-label">图片处理：</span>
+          <label class="option">
+            <input type="radio" name="image-mode" value="github" checked> 上传到 GitHub 图床
+          </label>
+          <label class="option">
+            <input type="radio" name="image-mode" value="skip"> 跳过图片
+          </label>
+        </div>
+      </div>
+
+      <button id="export-btn" class="btn primary" disabled>导出 Markdown</button>
+    </div>
+
+    <!-- Batch export tab -->
+    <div id="tab-batch" class="tab-content">
+      <div class="batch-controls">
+        <input type="text" id="search-input" placeholder="搜索对话..." class="search-input">
+        <div class="batch-actions">
+          <button id="select-all-btn" class="btn small">全选</button>
+          <button id="deselect-all-btn" class="btn small">取消全选</button>
+          <button id="load-list-btn" class="btn small primary">加载对话列表</button>
+        </div>
+      </div>
+
+      <div id="conversation-list" class="conversation-list">
+        <p class="placeholder">点击"加载对话列表"获取所有对话</p>
+      </div>
+
+      <!-- Same options for batch -->
+      <div class="options">
+        <label class="option">
+          <input type="checkbox" id="batch-opt-thinking"> 包含思考过程
+        </label>
+        <label class="option">
+          <input type="checkbox" id="batch-opt-timestamp" checked> 包含时间戳
+        </label>
+        <div class="option-group">
+          <span class="option-label">图片处理：</span>
+          <label class="option">
+            <input type="radio" name="batch-image-mode" value="github" checked> 上传到 GitHub 图床
+          </label>
+          <label class="option">
+            <input type="radio" name="batch-image-mode" value="skip"> 跳过图片
+          </label>
+        </div>
+      </div>
+
+      <button id="batch-export-btn" class="btn primary" disabled>
+        批量导出 (<span id="selected-count">0</span> 个)
+      </button>
+    </div>
+
+    <!-- Progress section -->
+    <div id="progress-section" class="progress-section hidden">
+      <div class="progress-bar-container">
+        <div id="progress-bar" class="progress-bar" style="width: 0%"></div>
+      </div>
+      <p id="progress-text" class="progress-text">准备中...</p>
+    </div>
+
+    <!-- Status message -->
+    <div id="status-message" class="status-message hidden"></div>
+
+    <!-- Settings link -->
+    <footer>
+      <a href="#" id="open-options">设置 GitHub 图床</a>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

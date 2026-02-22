@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <h1>AIexporter 设置</h1>
+    <p class="description">配置 GitHub 图床，对话中的图片将自动上传到指定仓库。</p>
+
+    <form id="settings-form">
+      <div class="field">
+        <label for="github-token">GitHub Personal Access Token</label>
+        <div class="input-row">
+          <input type="password" id="github-token" placeholder="ghp_xxxxxxxxxxxx">
+          <button type="button" id="toggle-token" class="btn small">显示</button>
+          <button type="button" id="verify-token" class="btn small primary">验证</button>
+        </div>
+        <p class="hint">
+          需要 <code>repo</code> 权限。
+          <a href="https://github.com/settings/tokens/new?scopes=repo&description=AIexporter" target="_blank" rel="noopener">创建 Token</a>
+        </p>
+      </div>
+
+      <div class="field">
+        <label for="github-owner">GitHub 用户名</label>
+        <input type="text" id="github-owner" placeholder="your-username">
+      </div>
+
+      <div class="field">
+        <label for="image-repo">图片仓库名</label>
+        <input type="text" id="image-repo" placeholder="image-hosting">
+        <p class="hint">用于存储图片的 GitHub 仓库（需提前创建）</p>
+      </div>
+
+      <div class="field">
+        <label for="image-branch">分支</label>
+        <input type="text" id="image-branch" placeholder="main" value="main">
+      </div>
+
+      <div class="field">
+        <label>CDN 类型</label>
+        <div class="radio-group">
+          <label class="radio-option">
+            <input type="radio" name="cdn-type" value="jsdelivr" checked>
+            jsDelivr <span class="hint-inline">推荐，全球加速</span>
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="cdn-type" value="statically">
+            Statically
+          </label>
+          <label class="radio-option">
+            <input type="radio" name="cdn-type" value="raw">
+            Raw GitHub <span class="hint-inline">直接访问，无缓存</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn primary">保存设置</button>
+      </div>
+    </form>
+
+    <div id="status" class="status hidden"></div>
+
+    <div id="connection-status" class="connection-status hidden">
+      <span class="dot"></span>
+      <span id="connection-text"></span>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
