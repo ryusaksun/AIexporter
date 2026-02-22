@@ -102,39 +102,8 @@
 
   // Fetch conversations belonging to a specific project
   async function fetchProjectConversations(orgId, projectId) {
-    // Strategy: fetch all conversations and filter by project_uuid
-    // This is the most reliable method across all project types
-    const allConversations = await fetchConversationList(orgId);
-
-    // Try all possible project-related field names
-    const filtered = allConversations.filter((c) => {
-      if (c.project_uuid === projectId) return true;
-      if (c.project?.uuid === projectId) return true;
-      if (c.project_id === projectId) return true;
-      // project might be a string ID directly
-      if (c.project === projectId) return true;
-      return false;
-    });
-
-    // Debug: if no match, log sample conversation's project fields
-    if (filtered.length === 0 && allConversations.length > 0) {
-      const sample = allConversations[0];
-      const projectFields = {};
-      for (const key of Object.keys(sample)) {
-        if (key.toLowerCase().includes('project') || key.toLowerCase().includes('folder')) {
-          projectFields[key] = sample[key];
-        }
-      }
-      console.log(`[AIexporter] No conversations matched project ${projectId}`);
-      console.log('[AIexporter] Sample conversation keys:', Object.keys(sample));
-      console.log('[AIexporter] Sample project fields:', JSON.stringify(projectFields));
-    }
-
-    if (filtered.length > 0) {
-      return filtered;
-    }
-
-    // Fallback: try /docs endpoint (some projects list conversations there)
+    // Step 1: Get doc UUIDs from /docs endpoint
+    const docUuids = new Set();
     try {
       const url = `https://claude.ai/api/organizations/${orgId}/projects/${projectId}/docs`;
       const resp = await fetch(url, {
@@ -144,28 +113,31 @@
 
       if (resp.ok) {
         const data = await resp.json();
-        let docs = Array.isArray(data) ? data : (data.chat_conversations || data.conversations || []);
-
-        // Filter to only conversation-like items (have chat_conversation_uuid or similar)
-        const convDocs = docs.filter(
-          (d) => d.uuid || d.chat_conversation_uuid || d.conversation_uuid
-        );
-
-        if (convDocs.length > 0) {
-          return convDocs.map((doc) => ({
-            ...doc,
-            uuid: doc.uuid || doc.chat_conversation_uuid || doc.conversation_uuid || doc.id,
-            name: doc.name || doc.title || doc.file_name || 'Untitled',
-            created_at: doc.created_at,
-            updated_at: doc.updated_at,
-          }));
+        const docs = Array.isArray(data) ? data : (data.chat_conversations || data.conversations || []);
+        for (const doc of docs) {
+          const id = doc.uuid || doc.chat_conversation_uuid || doc.conversation_uuid || doc.id;
+          if (id) docUuids.add(id);
         }
       }
     } catch {
       // ignore
     }
 
-    return [];
+    if (docUuids.size === 0) {
+      return [];
+    }
+
+    // Step 2: Fetch full conversation list to get proper metadata (name, dates)
+    const allConversations = await fetchConversationList(orgId);
+    const matched = allConversations.filter((c) => docUuids.has(c.uuid));
+
+    // If matched from full list, return those (they have proper name/dates)
+    if (matched.length > 0) {
+      return matched;
+    }
+
+    // Step 3: If no match in conversation list, return docs directly (normalized)
+    return Array.from(docUuids).map((id) => ({ uuid: id, name: 'Untitled' }));
   }
 
   // Fetch project metadata (name, description)
