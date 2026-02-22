@@ -105,9 +105,30 @@
     // Strategy: fetch all conversations and filter by project_uuid
     // This is the most reliable method across all project types
     const allConversations = await fetchConversationList(orgId);
-    const filtered = allConversations.filter(
-      (c) => c.project_uuid === projectId || c.project?.uuid === projectId
-    );
+
+    // Try all possible project-related field names
+    const filtered = allConversations.filter((c) => {
+      if (c.project_uuid === projectId) return true;
+      if (c.project?.uuid === projectId) return true;
+      if (c.project_id === projectId) return true;
+      // project might be a string ID directly
+      if (c.project === projectId) return true;
+      return false;
+    });
+
+    // Debug: if no match, log sample conversation's project fields
+    if (filtered.length === 0 && allConversations.length > 0) {
+      const sample = allConversations[0];
+      const projectFields = {};
+      for (const key of Object.keys(sample)) {
+        if (key.toLowerCase().includes('project') || key.toLowerCase().includes('folder')) {
+          projectFields[key] = sample[key];
+        }
+      }
+      console.log(`[AIexporter] No conversations matched project ${projectId}`);
+      console.log('[AIexporter] Sample conversation keys:', Object.keys(sample));
+      console.log('[AIexporter] Sample project fields:', JSON.stringify(projectFields));
+    }
 
     if (filtered.length > 0) {
       return filtered;
