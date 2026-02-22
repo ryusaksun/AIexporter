@@ -198,6 +198,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     chrome.runtime.openOptionsPage();
   });
 
+  // Debug button - dump API data structure to console
+  const debugBtn = document.getElementById('debug-btn');
+  if (debugBtn) {
+    debugBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      if (!currentTabId || !isOnChat) {
+        showStatus('error', '请先打开一个 Claude 对话页面');
+        return;
+      }
+
+      debugBtn.textContent = '获取中...';
+      try {
+        const result = await chrome.tabs.sendMessage(currentTabId, {
+          action: 'debugConversation',
+        });
+
+        if (result.success) {
+          // Download debug info as JSON
+          const json = JSON.stringify(result.data, null, 2);
+          const dataUrl = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+          await chrome.downloads.download({
+            url: dataUrl,
+            filename: 'aiexporter-debug.json',
+            saveAs: false,
+          });
+          showStatus('success', '调试数据已下载为 aiexporter-debug.json，请将此文件分享给开发者');
+        } else {
+          throw new Error(result.error);
+        }
+      } catch (err) {
+        showStatus('error', `调试失败: ${err.message}`);
+      } finally {
+        debugBtn.textContent = '调试: 查看 API 数据';
+      }
+    });
+  }
+
   // --- Helper functions ---
 
   function getExportOptions() {

@@ -112,11 +112,53 @@
     return messages;
   }
 
+  // Get the best available URL from an attachment object
+  // Claude API may use different field names across versions
+  function getAttachmentUrl(att, orgId) {
+    // Try common URL field names
+    if (att.file_url) return att.file_url;
+    if (att.url) return att.url;
+    if (att.preview_url) return att.preview_url;
+    if (att.content_url) return att.content_url;
+
+    // Construct URL from attachment ID if available
+    if (att.id && orgId) {
+      return `https://claude.ai/api/organizations/${orgId}/files/${att.id}/content`;
+    }
+
+    return null;
+  }
+
+  // Get MIME type from attachment, trying multiple field names
+  function getAttachmentMimeType(att) {
+    return att.file_type || att.media_type || att.content_type || att.mime_type || '';
+  }
+
+  // Check if an attachment is an image
+  function isImageAttachment(att) {
+    const mime = getAttachmentMimeType(att);
+    if (mime && mime.startsWith('image/')) return true;
+
+    // Fallback: check file name extension
+    const name = att.file_name || att.filename || att.name || '';
+    if (/\.(png|jpg|jpeg|gif|webp|svg|bmp|tiff|heic)$/i.test(name)) return true;
+
+    return false;
+  }
+
   // Download an image URL as base64 (using page's cookies)
   async function downloadImageAsBase64(imageUrl) {
     try {
+      // Handle relative URLs
+      if (imageUrl.startsWith('/')) {
+        imageUrl = `https://claude.ai${imageUrl}`;
+      }
+
       const resp = await fetch(imageUrl, { credentials: 'include' });
-      if (!resp.ok) return null;
+      if (!resp.ok) {
+        console.warn(`[AIexporter] Image download failed: ${resp.status} for ${imageUrl}`);
+        return null;
+      }
 
       const blob = await resp.blob();
       return new Promise((resolve) => {
@@ -128,49 +170,117 @@
         reader.onerror = () => resolve(null);
         reader.readAsDataURL(blob);
       });
-    } catch {
+    } catch (err) {
+      console.warn(`[AIexporter] Image download error:`, err);
       return null;
     }
   }
 
   // Extract all images from messages and download them
-  async function extractAndDownloadImages(messages, sendProgress) {
+  async function extractAndDownloadImages(messages, sendProgress, orgId) {
     const images = [];
     let index = 0;
 
     for (const msg of messages) {
-      // User attachments
-      if (msg.attachments) {
+      // 1. User attachments (array of file objects)
+      if (msg.attachments && Array.isArray(msg.attachments)) {
         for (const att of msg.attachments) {
-          if (att.file_type && att.file_type.startsWith('image/')) {
+          if (!isImageAttachment(att)) continue;
+
+          const fileName = att.file_name || att.filename || att.name || `image-${index}`;
+          const imageInfo = {
+            id: `att-${msg.uuid}-${fileName}`,
+            messageUuid: msg.uuid,
+            type: 'attachment',
+            fileName,
+            mimeType: getAttachmentMimeType(att) || 'image/png',
+            base64: null,
+          };
+
+          const imageUrl = getAttachmentUrl(att, orgId);
+          if (imageUrl) {
+            sendProgress({ stage: 'downloading', current: index + 1, fileName });
+            const result = await downloadImageAsBase64(imageUrl);
+            if (result) {
+              imageInfo.base64 = result.base64;
+              imageInfo.mimeType = result.mimeType || imageInfo.mimeType;
+            }
+          }
+
+          images.push(imageInfo);
+          index++;
+        }
+      }
+
+      // 2. Files array (alternative to attachments in some API versions)
+      if (msg.files && Array.isArray(msg.files)) {
+        for (const file of msg.files) {
+          if (!isImageAttachment(file)) continue;
+
+          const fileName = file.file_name || file.filename || file.name || `file-${index}`;
+          const imageInfo = {
+            id: `file-${msg.uuid}-${fileName}`,
+            messageUuid: msg.uuid,
+            type: 'attachment',
+            fileName,
+            mimeType: getAttachmentMimeType(file) || 'image/png',
+            base64: null,
+          };
+
+          const imageUrl = getAttachmentUrl(file, orgId);
+          if (imageUrl) {
+            sendProgress({ stage: 'downloading', current: index + 1, fileName });
+            const result = await downloadImageAsBase64(imageUrl);
+            if (result) {
+              imageInfo.base64 = result.base64;
+              imageInfo.mimeType = result.mimeType || imageInfo.mimeType;
+            }
+          }
+
+          images.push(imageInfo);
+          index++;
+        }
+      }
+
+      // 3. Image content blocks (in both user and assistant messages)
+      if (msg.content && Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          // Direct image content block: { type: "image", source: { ... } }
+          if (block.type === 'image') {
             const imageInfo = {
-              id: `att-${msg.uuid}-${att.file_name || index}`,
+              id: `img-${msg.uuid}-${index}`,
               messageUuid: msg.uuid,
-              type: 'attachment',
-              fileName: att.file_name || `image-${index}`,
-              mimeType: att.file_type,
+              type: 'content_image',
+              fileName: `image-${index}.png`,
+              mimeType: block.media_type || block.source?.media_type || 'image/png',
               base64: null,
             };
 
-            // Download if URL is available
-            if (att.file_url) {
-              sendProgress({ stage: 'downloading', current: index + 1, fileName: att.file_name });
-              const result = await downloadImageAsBase64(att.file_url);
+            // Image might have base64 data inline
+            if (block.source?.type === 'base64' && block.source?.data) {
+              imageInfo.base64 = block.source.data;
+              imageInfo.mimeType = block.source.media_type || 'image/png';
+            } else if (block.source?.type === 'url' && block.source?.url) {
+              sendProgress({ stage: 'downloading', current: index + 1, fileName: imageInfo.fileName });
+              const result = await downloadImageAsBase64(block.source.url);
               if (result) {
                 imageInfo.base64 = result.base64;
-                imageInfo.mimeType = result.mimeType || att.file_type;
+                imageInfo.mimeType = result.mimeType;
+              }
+            } else if (block.url) {
+              sendProgress({ stage: 'downloading', current: index + 1, fileName: imageInfo.fileName });
+              const result = await downloadImageAsBase64(block.url);
+              if (result) {
+                imageInfo.base64 = result.base64;
+                imageInfo.mimeType = result.mimeType;
               }
             }
 
             images.push(imageInfo);
             index++;
           }
-        }
-      }
 
-      // AI-generated images in content blocks
-      if (msg.content && Array.isArray(msg.content)) {
-        for (const block of msg.content) {
+          // AI-generated images via tool_use (artifacts)
           if (block.type === 'tool_use' && block.display_content) {
             if (block.display_content.type === 'image' && block.display_content.url) {
               const imageInfo = {
@@ -223,6 +333,14 @@
       return true;
     }
 
+    // Debug: dump raw API response for a conversation
+    if (request.action === 'debugConversation') {
+      handleDebugConversation()
+        .then((data) => sendResponse({ success: true, data }))
+        .catch((err) => sendResponse({ success: false, error: err.message }));
+      return true;
+    }
+
     if (request.action === 'ping') {
       sendResponse({ success: true });
       return false;
@@ -256,7 +374,7 @@
     if (options.imageMode !== 'skip') {
       images = await extractAndDownloadImages(messages, (progress) => {
         chrome.runtime.sendMessage({ action: 'progress', ...progress }).catch(() => {});
-      });
+      }, orgId);
     }
 
     return {
@@ -269,6 +387,78 @@
       messages,
       images,
     };
+  }
+
+  // Debug: fetch raw conversation data and log structure
+  async function handleDebugConversation() {
+    const orgId = await getOrganizationId();
+    const convId = getConversationIdFromURL();
+
+    if (!convId) {
+      throw new Error('No conversation found in current URL');
+    }
+
+    const data = await fetchConversation(orgId, convId);
+    const messages = getCurrentBranchMessages(data);
+
+    // Extract structure info for each message (without huge content)
+    const debugInfo = messages.map((msg) => {
+      const info = {
+        uuid: msg.uuid,
+        sender: msg.sender,
+        hasText: !!msg.text,
+        textPreview: msg.text ? msg.text.substring(0, 80) : null,
+        contentTypes: [],
+        attachments: [],
+        files: [],
+        allKeys: Object.keys(msg),
+      };
+
+      if (msg.content && Array.isArray(msg.content)) {
+        info.contentTypes = msg.content.map((b) => {
+          const blockInfo = { type: b.type };
+          if (b.type === 'image') {
+            blockInfo.source_type = b.source?.type;
+            blockInfo.has_data = !!b.source?.data;
+            blockInfo.media_type = b.source?.media_type || b.media_type;
+            blockInfo.url = b.url || b.source?.url;
+          }
+          return blockInfo;
+        });
+      }
+
+      if (msg.attachments && Array.isArray(msg.attachments)) {
+        info.attachments = msg.attachments.map((att) => ({
+          keys: Object.keys(att),
+          file_name: att.file_name || att.filename || att.name,
+          file_type: att.file_type || att.media_type || att.content_type || att.mime_type,
+          has_file_url: !!att.file_url,
+          has_url: !!att.url,
+          has_preview_url: !!att.preview_url,
+          has_content_url: !!att.content_url,
+          has_id: !!att.id,
+          id: att.id,
+        }));
+      }
+
+      if (msg.files && Array.isArray(msg.files)) {
+        info.files = msg.files.map((f) => ({
+          keys: Object.keys(f),
+          file_name: f.file_name || f.filename || f.name,
+          file_type: f.file_type || f.media_type || f.content_type,
+          id: f.id,
+        }));
+      }
+
+      return info;
+    });
+
+    // Log to console for debugging
+    console.log('[AIexporter] Raw conversation data keys:', Object.keys(data));
+    console.log('[AIexporter] Message count:', messages.length);
+    console.log('[AIexporter] Message debug info:', JSON.stringify(debugInfo, null, 2));
+
+    return debugInfo;
   }
 
   // Get conversation list for batch export
