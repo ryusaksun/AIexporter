@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentTabId = null;
   let conversations = [];
   const selectedIds = new Set(); // persist selection across search/re-render
+  let exporting = false; // guard against late progress messages
 
   // Tab switching
   tabs.forEach((tab) => {
@@ -54,9 +55,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     exportBtn.disabled = true;
   }
 
-  // Listen for progress updates
+  // Listen for progress updates (only while exporting)
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg.action === 'progressUpdate') {
+    if (msg.action === 'progressUpdate' && exporting) {
       showProgress(msg);
     }
   });
@@ -67,6 +68,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     exportBtn.disabled = true;
     exportBtn.textContent = '导出中...';
+    exporting = true;
     hideStatus();
     showProgressSection();
 
@@ -91,6 +93,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
       showStatus('error', `导出失败: ${err.message}`);
     } finally {
+      exporting = false;
       exportBtn.disabled = false;
       exportBtn.textContent = '导出 Markdown';
       hideProgressSection();
@@ -162,6 +165,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     batchExportBtn.disabled = true;
     batchExportBtn.textContent = '导出中...';
+    exporting = true;
     hideStatus();
     showProgressSection();
 
@@ -189,6 +193,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
       showStatus('error', `批量导出失败: ${err.message}`);
     } finally {
+      exporting = false;
       batchExportBtn.disabled = false;
       updateBatchButtonText();
       hideProgressSection();
