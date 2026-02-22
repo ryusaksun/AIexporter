@@ -217,7 +217,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } finally {
       exporting = false;
       batchExportBtn.disabled = false;
-      updateBatchButtonText();
+      updateSelectedCount();
       hideProgressSection();
     }
   });
@@ -230,6 +230,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     projectExportBtn.disabled = true;
 
     try {
+      // Ensure content script is ready (it may not be injected yet on project pages)
+      await ensureContentScript(currentTabId);
+
       const result = await chrome.tabs.sendMessage(currentTabId, {
         action: 'getProjectConversations',
       });
@@ -357,6 +360,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // --- Helper functions ---
+
+  // Ensure content script is injected and responsive
+  async function ensureContentScript(tabId) {
+    try {
+      await chrome.tabs.sendMessage(tabId, { action: 'ping' });
+    } catch {
+      // Content script not ready, inject it manually
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['content.js'],
+      });
+      // Wait a moment for it to initialize
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
 
   function getExportOptions() {
     return {
