@@ -102,18 +102,40 @@
 
   // Fetch conversations belonging to a specific project
   async function fetchProjectConversations(orgId, projectId) {
-    // Primary: /docs endpoint returns project conversations directly
-    const url = `https://claude.ai/api/organizations/${orgId}/projects/${projectId}/docs`;
-    const resp = await fetch(url, {
-      credentials: 'include',
-      headers: { 'Accept': 'application/json' },
-    });
+    // Primary: /docs endpoint returns project conversations
+    try {
+      const url = `https://claude.ai/api/organizations/${orgId}/projects/${projectId}/docs`;
+      const resp = await fetch(url, {
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' },
+      });
 
-    if (resp.ok) {
-      const data = await resp.json();
-      if (Array.isArray(data)) return data;
-      if (data.chat_conversations) return data.chat_conversations;
-      if (data.conversations) return data.conversations;
+      if (resp.ok) {
+        const data = await resp.json();
+        let docs = [];
+
+        if (Array.isArray(data)) {
+          docs = data;
+        } else if (data.chat_conversations) {
+          docs = data.chat_conversations;
+        } else if (data.conversations) {
+          docs = data.conversations;
+        }
+
+        if (docs.length > 0) {
+          // /docs items may use different field names than regular conversations
+          // Normalize: ensure each item has uuid and name
+          return docs.map((doc) => ({
+            ...doc,
+            uuid: doc.uuid || doc.chat_conversation_uuid || doc.conversation_uuid || doc.id,
+            name: doc.name || doc.title || doc.file_name || 'Untitled',
+            created_at: doc.created_at,
+            updated_at: doc.updated_at,
+          }));
+        }
+      }
+    } catch {
+      // Fall through to fallback
     }
 
     // Fallback: fetch all conversations and filter by project_uuid
