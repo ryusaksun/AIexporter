@@ -508,6 +508,17 @@
             blockInfo.media_type = b.source?.media_type || b.media_type;
             blockInfo.url = b.url || b.source?.url;
           }
+          if (b.type === 'tool_use') {
+            blockInfo.name = b.name;
+            blockInfo.id = b.id;
+            blockInfo.input_keys = b.input ? Object.keys(b.input) : [];
+            blockInfo.input_title = b.input?.title;
+            blockInfo.input_type = b.input?.type;
+            blockInfo.has_input_content = !!(b.input?.content);
+            blockInfo.input_content_length = b.input?.content?.length || 0;
+            blockInfo.display_content_type = b.display_content?.type;
+            blockInfo.display_content_keys = b.display_content ? Object.keys(b.display_content) : [];
+          }
           return blockInfo;
         });
       }
