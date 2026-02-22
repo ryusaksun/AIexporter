@@ -102,42 +102,53 @@
 
   // Fetch conversations belonging to a specific project
   async function fetchProjectConversations(orgId, projectId) {
-    // Step 1: Get doc UUIDs from /docs endpoint
-    const docUuids = new Set();
-    try {
-      const url = `https://claude.ai/api/organizations/${orgId}/projects/${projectId}/docs`;
-      const resp = await fetch(url, {
-        credentials: 'include',
-        headers: { 'Accept': 'application/json' },
-      });
+    // Try multiple endpoints to find project conversations
+    const endpoints = [
+      `/api/organizations/${orgId}/projects/${projectId}/chat_conversations`,
+      `/api/organizations/${orgId}/projects/${projectId}/conversations`,
+      `/api/organizations/${orgId}/projects/${projectId}/docs`,
+      `/api/organizations/${orgId}/chat_conversations?project_uuid=${projectId}`,
+    ];
 
-      if (resp.ok) {
+    for (const path of endpoints) {
+      try {
+        const resp = await fetch(`https://claude.ai${path}`, {
+          credentials: 'include',
+          headers: { 'Accept': 'application/json' },
+        });
+
+        if (!resp.ok) continue;
+
         const data = await resp.json();
-        const docs = Array.isArray(data) ? data : (data.chat_conversations || data.conversations || []);
-        for (const doc of docs) {
-          const id = doc.uuid || doc.chat_conversation_uuid || doc.conversation_uuid || doc.id;
-          if (id) docUuids.add(id);
+        let items = [];
+
+        if (Array.isArray(data)) {
+          items = data;
+        } else {
+          // Try common wrapper fields
+          items = data.chat_conversations || data.conversations || data.data || data.results || [];
         }
+
+        if (items.length === 0) continue;
+
+        // Check if these look like conversations (have name or chat-related fields)
+        const hasConversations = items.some(
+          (item) => item.name !== undefined || item.chat_messages !== undefined || item.current_leaf_message_uuid !== undefined
+        );
+
+        if (hasConversations) {
+          return items.map((item) => ({
+            ...item,
+            uuid: item.uuid || item.id,
+            name: item.name || item.title || 'Untitled',
+          }));
+        }
+      } catch {
+        continue;
       }
-    } catch {
-      // ignore
     }
 
-    if (docUuids.size === 0) {
-      return [];
-    }
-
-    // Step 2: Fetch full conversation list to get proper metadata (name, dates)
-    const allConversations = await fetchConversationList(orgId);
-    const matched = allConversations.filter((c) => docUuids.has(c.uuid));
-
-    // If matched from full list, return those (they have proper name/dates)
-    if (matched.length > 0) {
-      return matched;
-    }
-
-    // Step 3: If no match in conversation list, return docs directly (normalized)
-    return Array.from(docUuids).map((id) => ({ uuid: id, name: 'Untitled' }));
+    return [];
   }
 
   // Fetch project metadata (name, description)
@@ -597,9 +608,39 @@
       throw new Error('No project found in current URL');
     }
 
-    // Get project info for the name
     const projectInfo = await fetchProjectInfo(orgId, projectId);
     const conversations = await fetchProjectConversations(orgId, projectId);
+
+    // Debug: if empty, scan all possible endpoints and log results
+    if (conversations.length === 0) {
+      const debugPaths = [
+        `/api/organizations/${orgId}/projects/${projectId}`,
+        `/api/organizations/${orgId}/projects/${projectId}/docs`,
+        `/api/organizations/${orgId}/projects/${projectId}/chat_conversations`,
+        `/api/organizations/${orgId}/projects/${projectId}/conversations`,
+        `/api/organizations/${orgId}/chat_conversations?project_uuid=${projectId}`,
+      ];
+      for (const path of debugPaths) {
+        try {
+          const r = await fetch(`https://claude.ai${path}`, {
+            credentials: 'include',
+            headers: { 'Accept': 'application/json' },
+          });
+          if (!r.ok) {
+            console.log(`[AIexporter] ${path} -> ${r.status}`);
+            continue;
+          }
+          const d = await r.json();
+          if (Array.isArray(d)) {
+            console.log(`[AIexporter] ${path} -> array[${d.length}]`, d.length > 0 ? 'first keys:' : '', d.length > 0 ? Object.keys(d[0]) : []);
+          } else {
+            console.log(`[AIexporter] ${path} -> object keys:`, Object.keys(d));
+          }
+        } catch (e) {
+          console.log(`[AIexporter] ${path} -> error:`, e.message);
+        }
+      }
+    }
 
     return {
       project: {
